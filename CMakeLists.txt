@@ -3,4 +3,4 @@ project(zmem C)
 
 set(CMAKE_C_STANDARD 23)
 
-add_executable(zmem main.c)
+add_executable(zmem main.c zmem.c zmem.h)
