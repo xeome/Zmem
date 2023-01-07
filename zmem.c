@@ -1,21 +1,19 @@
 #include "zmem.h"
-#include <stdio.h>
-#include <memory.h>
 
 /*
  * Print the history of values in a line graph.
- * @param memory_stats MemoryStats struct containing the history
+ * @param data MemoryStats struct containing the history
  * @param graph_height The height of the graph in characters
  * */
 
-void draw_line_graph(const MemoryStats* memory_stats, int graph_height) {
+void draw_line_graph(BoundedQueue* data, int graph_height) {
     double max = 0;
     double min = 0;
-    int history_size = memory_stats->history_size;
+    int history_size = data->capacity;
     // Find the maximum and minimum values in the history array
     for (int i = 0; i < history_size; ++i) {
-        max = (memory_stats->history[i] > max) ? memory_stats->history[i] : max;
-        min = (memory_stats->history[i] < min) ? memory_stats->history[i] : min;
+        max = data->array[i] > max ? data->array[i] : max;
+        min = data->array[i] < min ? data->array[i] : min;
     }
 
     double range = max - min;
@@ -51,18 +49,19 @@ void draw_line_graph(const MemoryStats* memory_stats, int graph_height) {
 
         // This loop iterates over the values in the history array
         for (int j = 0; j < history_size; j++) {
+            double current = get_element(data, j);
+
             // Determine the range represented by the current y-axis value
-            double range_min = (memory_stats->history[j] > center)
+            double range_min = (current > center)
                                    ? max - (i * scale)
                                    : max - ((i + 1) * scale);
-            double range_max = (memory_stats->history[j] > center)
+            double range_max = (current > center)
                                    ? max - ((i - 1) * scale)
                                    : max - (i * scale);
 
             // If the value falls within the range, print a blue asterisk
             // character. If it doesn't, print a space character.
-            if (memory_stats->history[j] >= range_min &&
-                memory_stats->history[j] < range_max) {
+            if (current >= range_min && current < range_max) {
                 printf(BLUE "*" RESET);
             } else {
                 printf(" ");
@@ -149,4 +148,25 @@ void print_memory_info(const MemoryStats* memory_stats) {
            memory_stats->swapcached,
            memory_stats->swap_total - memory_stats->zswapped +
                memory_stats->swapcached);
+}
+
+void draw_history(BoundedQueueMemoryStats* data) {
+    // Print header
+    printf(
+        "             total       used       free     shared buff/cache  "
+        "available\n");
+    // Print the memory history graph
+    for (int i = 0; i < data->size; i++) {
+        MemoryStats* current = get_element_memory_stats(data, i);
+        printf("Memory: %10.0lf %10.0lf %10.0lf %10.0lf %10.0lf %10.0lf\n",
+               current->memory_total, current->used, current->free,
+               current->shared, current->buffers + current->cache,
+               current->available);
+        printf("Swap:   %10.0lf %10.0lf %10.0lf %10.0lf %10.0lf %10.0lf\n",
+               current->swap_total,
+               current->swap_total - current->swap_free - current->swapcached,
+               current->swap_total - current->zswapped, 0.0,
+               current->swapcached,
+               current->swap_total - current->zswapped + current->swapcached);
+    }
 }
