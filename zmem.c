@@ -52,12 +52,10 @@ void draw_line_graph(BoundedQueue* data, int graph_height) {
             double current = get_element(data, j);
 
             // Determine the range represented by the current y-axis value
-            double range_min = (current > center)
-                                   ? max - (i * scale)
-                                   : max - ((i + 1) * scale);
-            double range_max = (current > center)
-                                   ? max - ((i - 1) * scale)
-                                   : max - (i * scale);
+            double range_min = (current > center) ? max - (i * scale)
+                                                  : max - ((i + 1) * scale);
+            double range_max = (current > center) ? max - ((i - 1) * scale)
+                                                  : max - (i * scale);
 
             // If the value falls within the range, print a blue asterisk
             // character. If it doesn't, print a space character.
@@ -116,7 +114,6 @@ void parse_memory_info(MemoryStats* memory_stats) {
     memory_stats->swapcached = memory_stats->swapcached / 1024;
     memory_stats->swap_total = memory_stats->swap_total / 1024;
     memory_stats->swap_free = memory_stats->swap_free / 1024;
-
 
     fclose(file);
 

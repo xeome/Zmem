@@ -64,7 +64,8 @@ BoundedQueue* create_bounded_queue(int capacity);
 MemoryStats* initialize_memory_stats();
 void enqueue_memory_stats(BoundedQueueMemoryStats* queue, MemoryStats* data);
 MemoryStats* dequeue_memory_stats(BoundedQueueMemoryStats* queue);
-MemoryStats* get_element_memory_stats(BoundedQueueMemoryStats* queue, int index);
+MemoryStats* get_element_memory_stats(BoundedQueueMemoryStats* queue,
+                                      int index);
 int empty_memory_stats(BoundedQueueMemoryStats* queue);
 int full_memory_stats(BoundedQueueMemoryStats* queue);
 BoundedQueueMemoryStats* create_bounded_queue_memory_stats(int capacity);
