@@ -8,8 +8,8 @@ void enqueue(BoundedQueue* queue, double data) {
     if (full(queue)) {
         dequeue(queue);
     }
-    queue->rear = (queue->rear + 1) % queue->capacity;
     queue->array[queue->rear] = data;
+    queue->rear = (queue->rear + 1) % queue->capacity;
     queue->size = queue->size + 1;
 }
 

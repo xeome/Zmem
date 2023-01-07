@@ -24,7 +24,8 @@ int main() {
     // Initialize history queue for used memory
     BoundedQueue* used_history = create_bounded_queue(HIST_SIZE);
 
-    BoundedQueueMemoryStats *memory_stats_history = create_bounded_queue_memory_stats(5);
+    BoundedQueueMemoryStats* memory_stats_history =
+        create_bounded_queue_memory_stats(5);
 
     while (keep_running) {
         // Clear the screen
@@ -58,7 +59,6 @@ int main() {
 
         // Print the graph of the history of Zswapped values
         draw_line_graph(used_history, 15);
-
 
         // Sleep for the specified delay
         usleep(DELAY_MS * 1000);
