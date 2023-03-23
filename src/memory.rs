@@ -1,8 +1,9 @@
+use crate::AnyError;
 use colored::Colorize;
 use std::fs::File;
 use std::io::Read;
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct MemoryStats {
     pub total: u64,
     pub free: u64,
@@ -23,46 +24,31 @@ pub struct MemoryStats {
 
 impl MemoryStats {
     pub fn new() -> Self {
-        MemoryStats {
-            total: 0,
-            free: 0,
-            available: 0,
-            used: 0,
-            shared: 0,
-            buffers: 0,
-            cached: 0,
-            swap_total: 0,
-            swap_free: 0,
-            swap_used: 0,
-            swap_available: 0,
-            zswap: 0,
-            zswap_compressed: 0,
-            swap_cached: 0,
-            compression_ratio: 0.0,
-        }
+        Self::default()
     }
-    pub fn update(&mut self) {
-        let mut file = File::open("/proc/meminfo").unwrap();
+
+    pub fn update(&mut self) -> Result<(), AnyError> {
+        let mut file = File::open("/proc/meminfo")?;
         let mut contents = String::new();
-        file.read_to_string(&mut contents).unwrap();
+        file.read_to_string(&mut contents)?;
         let lines: Vec<&str> = contents.lines().collect();
         for line in lines {
             let mut split = line.split_whitespace();
-            let key = split.next().unwrap();
-            let value = split.next().unwrap();
+            let key = split.next().ok_or("bad file format")?;
+            let value = split.next().ok_or("bad file format")?;
             match key {
-                "MemTotal:" => self.total = value.parse().unwrap(),
-                "MemFree:" => self.free = value.parse().unwrap(),
-                "MemAvailable:" => self.available = value.parse().unwrap(),
-                "MemUsed:" => self.used = value.parse().unwrap(),
-                "Shmem:" => self.shared = value.parse().unwrap(),
-                "Buffers:" => self.buffers = value.parse().unwrap(),
-                "Cached:" => self.cached = value.parse().unwrap(),
-                "SwapTotal:" => self.swap_total = value.parse().unwrap(),
-                "SwapFree:" => self.swap_free = value.parse().unwrap(),
-                "Zswap:" => self.zswap_compressed = value.parse().unwrap(),
-                "Zswapped:" => self.zswap = value.parse().unwrap(),
-                "SwapCached:" => self.swap_cached = value.parse().unwrap(),
+                "MemTotal:" => self.total = value.parse()?,
+                "MemFree:" => self.free = value.parse()?,
+                "MemAvailable:" => self.available = value.parse()?,
+                "MemUsed:" => self.used = value.parse()?,
+                "Shmem:" => self.shared = value.parse()?,
+                "Buffers:" => self.buffers = value.parse()?,
+                "Cached:" => self.cached = value.parse()?,
+                "SwapTotal:" => self.swap_total = value.parse()?,
+                "SwapFree:" => self.swap_free = value.parse()?,
+                "Zswap:" => self.zswap_compressed = value.parse()?,
+                "Zswapped:" => self.zswap = value.parse()?,
+                "SwapCached:" => self.swap_cached = value.parse()?,
                 _ => (),
             }
         }
@@ -70,7 +56,10 @@ impl MemoryStats {
         self.swap_used = self.swap_total - self.swap_free;
         self.swap_available = self.swap_total - self.swap_used;
         self.compression_ratio = self.zswap as f64 / self.zswap_compressed as f64;
+
+        Ok(())
     }
+
     // Display the memory stats. in Mb, in a free -m like format. right aligned. Colors are used to highlight the most important stats. Depending on the value of the stat, the color will change.
     //                total        used        free      shared  buff/cache   available
     // Mem:            7321        4861         899          33        1561        2172
