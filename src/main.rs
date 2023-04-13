@@ -1,4 +1,5 @@
 use memory::MemoryStats;
+use memory::ProcessMemoryStats;
 
 mod memory;
 

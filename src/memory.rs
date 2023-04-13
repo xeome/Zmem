@@ -20,6 +20,10 @@ pub struct MemoryStats {
     pub compression_ratio: f64,
     pub swap_used: u64,
     pub swap_available: u64,
+    pub totalvmem: u64,
+    pub freevmem: u64,
+    pub usedvmem: u64,
+    pub availablevmem: u64,
 }
 
 impl MemoryStats {
@@ -56,6 +60,10 @@ impl MemoryStats {
         self.swap_used = self.swap_total - self.swap_free;
         self.swap_available = self.swap_total - self.swap_used;
         self.compression_ratio = self.zswap as f64 / self.zswap_compressed as f64;
+        self.totalvmem = self.total + self.swap_total;
+        self.freevmem = self.free + self.swap_free;
+        self.usedvmem = self.used + self.swap_used;
+        self.availablevmem = self.available + self.swap_available;
 
         Ok(())
     }
@@ -64,6 +72,7 @@ impl MemoryStats {
     //                total        used        free      shared  buff/cache   available
     // Mem:            7321        4861         899          33        1561        2172
     // Swap:           9999        2602        7397
+    // Total:         17320        7463        8296
     pub fn display(&self) {
         let total = format!("{:>9}", self.total / 1024);
         let used = format!("{:>14}", self.used / 1024);
@@ -109,6 +118,16 @@ impl MemoryStats {
             swap_available.blue()
         );
         println!(
+            "{} {} {} {} {:>14} {:>14} {}",
+            "Total:".bold().blue(),
+            format!("{:>7}", self.totalvmem / 1024).green(),
+            format!("{:>14}", self.usedvmem / 1024).red(),
+            format!("{:>14}", self.freevmem / 1024).cyan(),
+            "",
+            "",
+            format!("{:>14}", self.availablevmem / 1024).blue()
+        );
+        println!(
             "\n{:>14} {:>14} {:>14}",
             "Zswap".bold(),
             "Compressed".bold(),
@@ -120,6 +139,65 @@ impl MemoryStats {
             zswap,
             zswap_compressed,
             compression_ratio
+        );
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct ProcessMemoryStats {
+    pub pid: u32,
+    pub username: String,
+    pub command: String,
+    pub swap: u64,
+    pub uss: u64,
+    pub pss: u64,
+    pub rss: u64,
+}
+
+impl ProcessMemoryStats {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn update(&mut self, pid: u32) -> Result<(), AnyError> {
+        self.pid = pid;
+        let mut file = File::open(format!("/proc/{}/smaps", pid))?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let lines: Vec<&str> = contents.lines().collect();
+        for line in lines {
+            let mut split = line.split_whitespace();
+            let key = split.next().ok_or("bad file format")?;
+            let value = split.next().ok_or("bad file format")?;
+            match key {
+                "Swap:" => self.swap = value.parse()?,
+                "Pss:" => self.pss = value.parse()?,
+                "Rss:" => self.rss = value.parse()?,
+                "Private_Clean:" => self.uss += value.parse::<u64>()?,
+                "Private_Dirty:" => self.uss += value.parse::<u64>()?,
+                _ => (),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn display(&self) {
+        let swap = format!("{:>14}", self.swap / 1024);
+        let uss = format!("{:>14}", self.uss / 1024);
+        let pss = format!("{:>14}", self.pss / 1024);
+        let rss = format!("{:>14}", self.rss / 1024);
+        println!(
+            "{:>14} {:>14} {:>14} {:>14} {:>14} {:>14}",
+            "PID".bold(),
+            "Swap".bold(),
+            "USS".bold(),
+            "PSS".bold(),
+            "RSS".bold(),
+            "COMMAND".bold()
+        );
+        println!(
+            "{} {} {} {} {} {}",
+            self.pid, swap, uss, pss, rss, self.command
         );
     }
 }
