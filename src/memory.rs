@@ -68,24 +68,34 @@ impl MemoryStats {
 
         Ok(())
     }
+    pub fn format_size(size: u64) -> String {
+        let mut size = size as f64;
+        let mut unit = "kB";
+        if size > 1024.0 {
+            size /= 1024.0;
+            unit = "MB";
+        }
+        if size > 1024.0 {
+            size /= 1024.0;
+            unit = "GB";
+        }
+        if size > 1024.0 {
+            size /= 1024.0;
+            unit = "TB";
+        }
 
+        format!("{:.2} {}", size, unit)
+    }
     pub fn display(&self) {
-        let total = format!("{:>9}", self.total / 1024);
-        let used = format!("{:>14}", self.used / 1024);
-        let free = format!("{:>14}", self.free / 1024);
-        let shared = format!("{:>14}", self.shared / 1024);
-        let cached = format!("{:>14}", self.cached / 1024);
-        let available = format!("{:>14}", self.available / 1024);
-        let swap_total = format!("{:>8}", self.swap_total / 1024);
-        let swap_used = format!("{:>14}", self.swap_used / 1024);
-        let swap_free = format!("{:>14}", self.swap_free / 1024);
-        let swap_available = format!("{:>14}", self.swap_available / 1024);
-        let zswap = format!("{:>7}", self.zswap / 1024);
-        let zswap_compressed = format!("{:>14}", self.zswap_compressed / 1024);
-        let swap_cached = format!("{:>14}", self.swap_cached / 1024);
-        let compression_ratio = format!("{:>14.3}", self.compression_ratio);
+        let fmt = |s: u64| format!("{:>15}", Self::format_size(s));
+        let fmt_mem = |s: u64| format!("{:>12}", Self::format_size(s));
+        let fmt_swap = |s: u64| format!("{:>11}", Self::format_size(s));
+        let fmt_total = |s: u64| format!("{:>10}", Self::format_size(s));
+        let fmt_zswap = |s: u64| format!("{:>10}", Self::format_size(s));
+        let fmt_ratio = |s: f64| format!("{:>15.3}", s);
+
         println!(
-            "{:>14} {:>14} {:>14} {:>14} {:>14} {:>14}",
+            "{:>17} {:>15} {:>15} {:>15} {:>15} {:>15}",
             "total".bold(),
             "used".bold(),
             "free".bold(),
@@ -96,35 +106,35 @@ impl MemoryStats {
         println!(
             "{} {} {} {} {} {} {}",
             "Mem:".bold().cyan(),
-            total.green(),
-            used.red(),
-            free.cyan(),
-            shared,
-            cached.yellow(),
-            available.blue()
+            fmt_mem(self.total).green(),
+            fmt(self.used).red(),
+            fmt(self.free).cyan(),
+            fmt(self.shared).yellow(),
+            fmt(self.buffers + self.cached).magenta(),
+            fmt(self.available).blue()
         );
         println!(
-            "{} {} {} {} {:>14} {} {}",
+            "{} {} {} {} {:>15} {} {}",
             "Swap:".bold().purple(),
-            swap_total.green(),
-            swap_used.red(),
-            swap_free.cyan(),
+            fmt_swap(self.swap_total).green(),
+            fmt(self.swap_used).red(),
+            fmt(self.swap_free).cyan(),
             "",
-            swap_cached.yellow(),
-            swap_available.blue()
+            fmt(self.swap_cached).yellow(),
+            fmt(self.swap_available).blue()
         );
         println!(
-            "{} {} {} {} {:>14} {:>14} {}",
+            "{} {} {} {} {:>15} {:>15} {}",
             "Total:".bold().blue(),
-            format!("{:>7}", self.totalvmem / 1024).green(),
-            format!("{:>14}", self.usedvmem / 1024).red(),
-            format!("{:>14}", self.freevmem / 1024).cyan(),
+            fmt_total(self.totalvmem).green(),
+            fmt(self.usedvmem).red(),
+            fmt(self.freevmem).cyan(),
             "",
             "",
-            format!("{:>14}", self.availablevmem / 1024).blue()
+            fmt(self.availablevmem).blue()
         );
         println!(
-            "\n{:>14} {:>14} {:>14}",
+            "\n{:>17} {:>15} {:>15}",
             "Zswap".bold(),
             "Compressed".bold(),
             "Ratio".bold()
@@ -132,9 +142,9 @@ impl MemoryStats {
         println!(
             "{} {} {} {}",
             "Zswap:".bold().purple(),
-            zswap,
-            zswap_compressed,
-            compression_ratio
+            fmt_zswap(self.zswap).green(),
+            fmt(self.zswap_compressed).red(),
+            fmt_ratio(self.compression_ratio).cyan()
         );
     }
 }
@@ -155,18 +165,21 @@ impl ProcessMemoryStats {
         Self::default()
     }
 
-    pub fn update(&mut self, pid: u32) -> Result<(), AnyError> {
-        let mut file = File::open(format!("/proc/{}/cmdline", pid))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        self.command = contents.replace("\0", " ");
-        if self.command.len() > 50 {
-            self.command.truncate(50);
-        }
-        self.pid = pid;
+    pub fn get_smaps(pid: u32) -> Result<String, AnyError> {
         let mut file = File::open(format!("/proc/{}/smaps", pid))?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
+        Ok(contents)
+    }
+
+    pub fn update(&mut self, pid: u32) -> Result<(), AnyError> {
+        self.command = Process::get_cmd(pid)?;
+        if self.command.len() > 50 {
+            self.command.truncate(50);
+        }
+
+        self.pid = pid;
+        let contents = Self::get_smaps(pid)?;
         let lines: Vec<&str> = contents.lines().collect();
         for line in lines {
             let mut split = line.split_whitespace();
@@ -186,18 +199,15 @@ impl ProcessMemoryStats {
     }
 
     pub fn display(&self) {
-        let swap = format!("{:>14}", self.swap / 1024);
-        let uss = format!("{:>14}", self.uss / 1024);
-        let pss = format!("{:>14}", self.pss / 1024);
-        let rss = format!("{:>14}", self.rss / 1024);
+        let fmt = |s: String| format!("{:>14}", s);
 
         println!(
-            "{:>14} {} {} {} {} {}",
+            "{:>10} {} {} {} {} {}",
             self.pid,
-            swap.red(),
-            uss.blue(),
-            pss.green(),
-            rss.cyan(),
+            fmt(MemoryStats::format_size(self.swap)).red(),
+            fmt(MemoryStats::format_size(self.uss)).green(),
+            fmt(MemoryStats::format_size(self.pss)).blue(),
+            fmt(MemoryStats::format_size(self.rss)).cyan(),
             self.command
         );
     }
@@ -220,15 +230,15 @@ impl Process {
         process
     }
 
-    pub fn get_cmd(pid: u32) -> String {
-        let mut file = File::open(format!("/proc/{}/cmdline", pid)).unwrap();
+    pub fn get_cmd(pid: u32) -> Result<String, AnyError> {
+        let mut file = File::open(format!("/proc/{}/cmdline", pid))?;
         let mut contents = String::new();
-        file.read_to_string(&mut contents).unwrap();
-        contents.replace("\0", " ")
+        file.read_to_string(&mut contents)?;
+        Ok(contents.replace("\0", " "))
     }
 
     pub fn update(&mut self) -> Result<(), AnyError> {
-        self.command = Self::get_cmd(self.pid);
+        self.command = Self::get_cmd(self.pid)?;
         self.memory.update(self.pid)?;
         Ok(())
     }
@@ -245,14 +255,24 @@ impl Processes {
         processes
     }
 
+    fn can_read_file(path: &str) -> bool {
+        match File::open(path) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
     pub fn update(&mut self) -> Result<(), AnyError> {
         let mut processes = vec![];
         for entry in fs::read_dir("/proc")? {
             let entry = entry?;
             let pid = entry.file_name().into_string().unwrap();
             if let Ok(pid) = pid.parse::<u32>() {
-                if !Process::get_cmd(pid).is_empty() {
-                    processes.push(Process::new(pid));
+                // Skip processes with no command, and the ones that we can't get smaps
+                if let Ok(command) = Process::get_cmd(pid) {
+                    if !command.is_empty() && Self::can_read_file(&format!("/proc/{}/smaps", pid)) {
+                        processes.push(Process::new(pid));
+                    }
                 }
             }
         }
@@ -263,7 +283,7 @@ impl Processes {
 
     pub fn display(&self) {
         println!(
-            "\n{:>14} {:>14} {:>14} {:>14} {:>14} {:>14}",
+            "\n{:>10} {:>14} {:>14} {:>14} {:>14} {:>14}",
             "PID".bold(),
             "Swap".bold(),
             "USS".bold(),
