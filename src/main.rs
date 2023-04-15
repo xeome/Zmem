@@ -1,5 +1,5 @@
 use memory::MemoryStats;
-use memory::ProcessMemoryStats;
+use memory::Processes;
 
 mod memory;
 
@@ -11,4 +11,10 @@ fn main() {
         println!("error updating memory stats: {}", e);
     }
     mem.display();
+
+    let mut processes = Processes::new();
+    if let Err(e) = processes.update() {
+        println!("error updating processes: {}", e);
+    }
+    processes.display();
 }
