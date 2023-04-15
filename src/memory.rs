@@ -1,5 +1,6 @@
 use crate::AnyError;
 use colored::Colorize;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 
@@ -68,11 +69,6 @@ impl MemoryStats {
         Ok(())
     }
 
-    // Display the memory stats. in Mb, in a free -m like format. right aligned. Colors are used to highlight the most important stats. Depending on the value of the stat, the color will change.
-    //                total        used        free      shared  buff/cache   available
-    // Mem:            7321        4861         899          33        1561        2172
-    // Swap:           9999        2602        7397
-    // Total:         17320        7463        8296
     pub fn display(&self) {
         let total = format!("{:>9}", self.total / 1024);
         let used = format!("{:>14}", self.used / 1024);
@@ -160,6 +156,13 @@ impl ProcessMemoryStats {
     }
 
     pub fn update(&mut self, pid: u32) -> Result<(), AnyError> {
+        let mut file = File::open(format!("/proc/{}/cmdline", pid))?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        self.command = contents.replace("\0", " ");
+        if self.command.len() > 50 {
+            self.command.truncate(50);
+        }
         self.pid = pid;
         let mut file = File::open(format!("/proc/{}/smaps", pid))?;
         let mut contents = String::new();
@@ -170,7 +173,7 @@ impl ProcessMemoryStats {
             let key = split.next().ok_or("bad file format")?;
             let value = split.next().ok_or("bad file format")?;
             match key {
-                "Swap:" => self.swap = value.parse()?,
+                "Swap:" => self.swap += value.parse::<u64>()?,
                 "Pss:" => self.pss = value.parse()?,
                 "Rss:" => self.rss = value.parse()?,
                 "Private_Clean:" => self.uss += value.parse::<u64>()?,
@@ -178,6 +181,7 @@ impl ProcessMemoryStats {
                 _ => (),
             }
         }
+
         Ok(())
     }
 
@@ -186,8 +190,74 @@ impl ProcessMemoryStats {
         let uss = format!("{:>14}", self.uss / 1024);
         let pss = format!("{:>14}", self.pss / 1024);
         let rss = format!("{:>14}", self.rss / 1024);
+
         println!(
-            "{:>14} {:>14} {:>14} {:>14} {:>14} {:>14}",
+            "{:>14} {} {} {} {} {}",
+            self.pid,
+            swap.red(),
+            uss.blue(),
+            pss.green(),
+            rss.cyan(),
+            self.command
+        );
+    }
+}
+
+pub struct Process {
+    pid: u32,
+    command: String,
+    memory: ProcessMemoryStats,
+}
+
+impl Process {
+    pub fn new(pid: u32) -> Self {
+        let mut process = Self {
+            pid,
+            command: String::new(),
+            memory: ProcessMemoryStats::new(),
+        };
+        process.update().unwrap();
+        process
+    }
+
+    pub fn update(&mut self) -> Result<(), AnyError> {
+        self.memory.update(self.pid)?;
+        let mut file = File::open(format!("/proc/{}/cmdline", self.pid))?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        self.command = contents.replace("\0", " ");
+        Ok(())
+    }
+}
+
+pub struct Processes {
+    processes: Vec<Process>,
+}
+
+impl Processes {
+    pub fn new() -> Self {
+        let mut processes = Self { processes: vec![] };
+        processes.update().unwrap();
+        processes
+    }
+
+    pub fn update(&mut self) -> Result<(), AnyError> {
+        let mut processes = vec![];
+        for entry in fs::read_dir("/proc")? {
+            let entry = entry?;
+            let pid = entry.file_name().into_string().unwrap();
+            if let Ok(pid) = pid.parse::<u32>() {
+                processes.push(Process::new(pid));
+            }
+        }
+        processes.sort_by(|a, b| a.memory.swap.cmp(&b.memory.swap));
+        self.processes = processes;
+        Ok(())
+    }
+
+    pub fn display(&self) {
+        println!(
+            "\n{:>14} {:>14} {:>14} {:>14} {:>14} {:>14}",
             "PID".bold(),
             "Swap".bold(),
             "USS".bold(),
@@ -195,9 +265,8 @@ impl ProcessMemoryStats {
             "RSS".bold(),
             "COMMAND".bold()
         );
-        println!(
-            "{} {} {} {} {} {}",
-            self.pid, swap, uss, pss, rss, self.command
-        );
+        for process in &self.processes {
+            process.memory.display();
+        }
     }
 }
