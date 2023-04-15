@@ -174,8 +174,8 @@ impl ProcessMemoryStats {
             let value = split.next().ok_or("bad file format")?;
             match key {
                 "Swap:" => self.swap += value.parse::<u64>()?,
-                "Pss:" => self.pss = value.parse()?,
-                "Rss:" => self.rss = value.parse()?,
+                "Pss:" => self.pss += value.parse::<u64>()?,
+                "Rss:" => self.rss += value.parse::<u64>()?,
                 "Private_Clean:" => self.uss += value.parse::<u64>()?,
                 "Private_Dirty:" => self.uss += value.parse::<u64>()?,
                 _ => (),
@@ -220,12 +220,16 @@ impl Process {
         process
     }
 
-    pub fn update(&mut self) -> Result<(), AnyError> {
-        self.memory.update(self.pid)?;
-        let mut file = File::open(format!("/proc/{}/cmdline", self.pid))?;
+    pub fn get_cmd(pid: u32) -> String {
+        let mut file = File::open(format!("/proc/{}/cmdline", pid)).unwrap();
         let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        self.command = contents.replace("\0", " ");
+        file.read_to_string(&mut contents).unwrap();
+        contents.replace("\0", " ")
+    }
+
+    pub fn update(&mut self) -> Result<(), AnyError> {
+        self.command = Self::get_cmd(self.pid);
+        self.memory.update(self.pid)?;
         Ok(())
     }
 }
@@ -247,7 +251,9 @@ impl Processes {
             let entry = entry?;
             let pid = entry.file_name().into_string().unwrap();
             if let Ok(pid) = pid.parse::<u32>() {
-                processes.push(Process::new(pid));
+                if !Process::get_cmd(pid).is_empty() {
+                    processes.push(Process::new(pid));
+                }
             }
         }
         processes.sort_by(|a, b| a.memory.swap.cmp(&b.memory.swap));
