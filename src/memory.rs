@@ -36,8 +36,7 @@ impl MemoryStats {
         let mut file = File::open("/proc/meminfo")?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-        let lines: Vec<&str> = contents.lines().collect();
-        for line in lines {
+        for line in contents.lines() {
             let mut split = line.split_whitespace();
             let key = split.next().ok_or("bad file format")?;
             let value = split.next().ok_or("bad file format")?;
@@ -172,16 +171,19 @@ impl ProcessMemoryStats {
         Ok(contents)
     }
 
-    pub fn update(&mut self, pid: u32) -> Result<(), AnyError> {
-        self.command = Process::get_cmd(pid)?;
+    pub fn update(&mut self, pid: &u32) -> Result<(), AnyError> {
+        self.command = Process::get_cmd(*pid)?;
         if self.command.len() > 50 {
             self.command.truncate(50);
         }
 
-        self.pid = pid;
-        let contents = Self::get_smaps(pid)?;
-        let lines: Vec<&str> = contents.lines().collect();
-        for line in lines {
+        self.pid = *pid;
+        let contents = Self::get_smaps(*pid)?;
+        let prefixes = ["Swap", "Pss", "Rss", "Private_Clean", "Private_Dirty"];
+        for line in contents
+            .lines()
+            .filter(|line| prefixes.iter().any(|prefix| line.starts_with(prefix)))
+        {
             let mut split = line.split_whitespace();
             let key = split.next().ok_or("bad file format")?;
             let value = split.next().ok_or("bad file format")?;
@@ -189,8 +191,8 @@ impl ProcessMemoryStats {
                 "Swap:" => self.swap += value.parse::<u64>()?,
                 "Pss:" => self.pss += value.parse::<u64>()?,
                 "Rss:" => self.rss += value.parse::<u64>()?,
-                "Private_Clean:" => self.uss += value.parse::<u64>()?,
-                "Private_Dirty:" => self.uss += value.parse::<u64>()?,
+                "Private_Clean:" | "Private_Dirty:" => self.uss += value.parse::<u64>()?,
+
                 _ => (),
             }
         }
@@ -226,7 +228,9 @@ impl Process {
             command: String::new(),
             memory: ProcessMemoryStats::new(),
         };
-        process.update().unwrap();
+        process.update().unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+        });
         process
     }
 
@@ -234,12 +238,12 @@ impl Process {
         let mut file = File::open(format!("/proc/{}/cmdline", pid))?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-        Ok(contents.replace("\0", " "))
+        Ok(contents.replace('\0', " "))
     }
 
     pub fn update(&mut self) -> Result<(), AnyError> {
         self.command = Self::get_cmd(self.pid)?;
-        self.memory.update(self.pid)?;
+        self.memory.update(&self.pid)?;
         Ok(())
     }
 }
@@ -250,23 +254,21 @@ pub struct Processes {
 
 impl Processes {
     pub fn new() -> Self {
-        let mut processes = Self { processes: vec![] };
-        processes.update().unwrap();
-        processes
+        Self { processes: vec![] }
     }
 
     fn can_read_file(path: &str) -> bool {
-        match File::open(path) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        File::open(path).is_ok()
     }
 
     pub fn update(&mut self) -> Result<(), AnyError> {
         let mut processes = vec![];
         for entry in fs::read_dir("/proc")? {
             let entry = entry?;
-            let pid = entry.file_name().into_string().unwrap();
+            let pid = entry
+                .file_name()
+                .into_string()
+                .unwrap_or_else(|_| "".to_string());
             if let Ok(pid) = pid.parse::<u32>() {
                 // Skip processes with no command, and the ones that we can't get smaps
                 if let Ok(command) = Process::get_cmd(pid) {
