@@ -3,6 +3,7 @@ use colored::Colorize;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+use tokio::task;
 
 #[derive(Default, Clone, Copy)]
 pub struct MemoryStats {
@@ -179,7 +180,13 @@ impl ProcessMemoryStats {
 
         self.pid = *pid;
         let contents = Self::get_smaps(*pid)?;
-        let prefixes = ["Swap", "Pss", "Rss", "Private_Clean", "Private_Dirty"];
+        let prefixes = [
+            "Swap: ",
+            "Pss: ",
+            "Rss: ",
+            "Private_Clean: ",
+            "Private_Dirty: ",
+        ];
         for line in contents
             .lines()
             .filter(|line| prefixes.iter().any(|prefix| line.starts_with(prefix)))
@@ -261,7 +268,7 @@ impl Processes {
         File::open(path).is_ok()
     }
 
-    pub fn update(&mut self) -> Result<(), AnyError> {
+    pub async fn update(&mut self) -> Result<(), AnyError> {
         let mut processes = vec![];
         for entry in fs::read_dir("/proc")? {
             let entry = entry?;
@@ -270,16 +277,24 @@ impl Processes {
                 .into_string()
                 .unwrap_or_else(|_| "".to_string());
             if let Ok(pid) = pid.parse::<u32>() {
-                // Skip processes with no command, and the ones that we can't get smaps
                 if let Ok(command) = Process::get_cmd(pid) {
                     if !command.is_empty() && Self::can_read_file(&format!("/proc/{}/smaps", pid)) {
-                        processes.push(Process::new(pid));
+                        let process_fut = async move { Process::new(pid) };
+                        let process = task::spawn(process_fut);
+                        processes.push(process);
                     }
                 }
             }
         }
-        processes.sort_by(|a, b| a.memory.swap.cmp(&b.memory.swap));
-        self.processes = processes;
+        let mut processes = futures::future::join_all(processes).await;
+        processes.sort_by(|a, b| {
+            a.as_ref()
+                .unwrap()
+                .memory
+                .swap
+                .cmp(&b.as_ref().unwrap().memory.swap)
+        });
+        self.processes = processes.into_iter().map(|p| p.unwrap()).collect();
         Ok(())
     }
 
