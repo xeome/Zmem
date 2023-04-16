@@ -6,6 +6,13 @@ Zmem is a program that displays detailed information about virtual memory on Lin
 # Installation
 TODO
 
+```
+git clone http://github.com/xeome/Zmem
+cd Zmem
+cargo build -r
+cp ./target/release/zmem /usr/local/bin/
+```
+
 # Contributing
 We welcome contributions to Zmem! If you have an idea for a new feature or have found a bug, please open an issue or submit a pull request.
 
