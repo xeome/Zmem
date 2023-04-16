@@ -10,6 +10,7 @@ TODO
 git clone http://github.com/xeome/Zmem
 cd Zmem
 cargo build -r
+cp ./target/release/zmem /usr/local/bin/
 ```
 
 # Contributing
