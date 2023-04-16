@@ -68,30 +68,12 @@ impl MemoryStats {
 
         Ok(())
     }
-    pub fn format_size(size: u64) -> String {
-        let mut size = size as f64;
-        let mut unit = "kB";
-        if size > 1024.0 {
-            size /= 1024.0;
-            unit = "MB";
-        }
-        if size > 1024.0 {
-            size /= 1024.0;
-            unit = "GB";
-        }
-        if size > 1024.0 {
-            size /= 1024.0;
-            unit = "TB";
-        }
-
-        format!("{:.2} {}", size, unit)
-    }
     pub fn display(&self) {
-        let fmt = |s: u64| format!("{:>15}", Self::format_size(s));
-        let fmt_mem = |s: u64| format!("{:>12}", Self::format_size(s));
-        let fmt_swap = |s: u64| format!("{:>11}", Self::format_size(s));
-        let fmt_total = |s: u64| format!("{:>10}", Self::format_size(s));
-        let fmt_zswap = |s: u64| format!("{:>10}", Self::format_size(s));
+        let fmt = |s: u64| format!("{:>15}", format_size(s));
+        let fmt_mem = |s: u64| format!("{:>12}", format_size(s));
+        let fmt_swap = |s: u64| format!("{:>11}", format_size(s));
+        let fmt_total = |s: u64| format!("{:>10}", format_size(s));
+        let fmt_zswap = |s: u64| format!("{:>10}", format_size(s));
         let fmt_ratio = |s: f64| format!("{:>15.3}", s);
 
         println!(
@@ -213,10 +195,10 @@ impl ProcessMemoryStats {
         println!(
             "{:>10} {} {} {} {} {}",
             self.pid,
-            fmt(MemoryStats::format_size(self.swap)).red(),
-            fmt(MemoryStats::format_size(self.uss)).green(),
-            fmt(MemoryStats::format_size(self.pss)).blue(),
-            fmt(MemoryStats::format_size(self.rss)).cyan(),
+            fmt(format_size(self.swap)).red(),
+            fmt(format_size(self.uss)).green(),
+            fmt(format_size(self.pss)).blue(),
+            fmt(format_size(self.rss)).cyan(),
             self.command
         );
     }
@@ -312,4 +294,23 @@ impl Processes {
             process.memory.display();
         }
     }
+}
+
+fn format_size(size: u64) -> String {
+    let mut size = size as f64;
+    let mut unit = "kB";
+    if size > 1024.0 {
+        size /= 1024.0;
+        unit = "MB";
+    }
+    if size > 1024.0 {
+        size /= 1024.0;
+        unit = "GB";
+    }
+    if size > 1024.0 {
+        size /= 1024.0;
+        unit = "TB";
+    }
+
+    format!("{:.2} {}", size, unit)
 }
