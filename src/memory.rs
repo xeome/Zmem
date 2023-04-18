@@ -33,11 +33,14 @@ impl MemoryStats {
         Self::default()
     }
 
+    /// ### Update
+    /// Uses `/proc/meminfo` to get the memory stats
     pub fn update(&mut self) -> Result<(), AnyError> {
         let mut file = File::open("/proc/meminfo")?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         for line in contents.lines() {
+            // Split the line into key and value
             let mut split = line.split_whitespace();
             let key = split.next().ok_or("bad file format")?;
             let value = split.next().ok_or("bad file format")?;
@@ -68,6 +71,18 @@ impl MemoryStats {
 
         Ok(())
     }
+
+    /// ### Display
+    /// Displays the memory stats in a human readable format:
+    /// ```
+    ///             total            used            free          shared      buff/cache       available
+    ///Mem:      7.15 GB         4.91 GB       340.04 MB       122.59 MB         1.91 GB         1.98 GB
+    ///Swap:     9.77 GB         2.17 GB         7.60 GB                       256.40 MB         7.60 GB
+    ///Total:   16.92 GB         7.08 GB         7.93 GB                                         9.58 GB
+    ///
+    ///            Zswap      Compressed           Ratio
+    ///Zswap:    1.68 GB       764.75 MB           2.256
+    /// ```
     pub fn display(&self) {
         let fmt = |s: u64| format!("{:>15}", format_size(s));
         let fmt_mem = |s: u64| format!("{:>12}", format_size(s));
@@ -147,6 +162,13 @@ impl ProcessMemoryStats {
         Self::default()
     }
 
+    /// Get the smaps for a given process
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let smaps = get_smaps(1)?;
+    /// ```
     pub fn get_smaps(pid: u32) -> Result<String, AnyError> {
         let mut file = File::open(format!("/proc/{}/smaps", pid))?;
         let mut contents = String::new();
@@ -154,8 +176,14 @@ impl ProcessMemoryStats {
         Ok(contents)
     }
 
+    /// Update the process memory stats
+    /// # Examples
+    /// ```
+    /// let mut pms = ProcessMemoryStats::new();
+    /// pms.update(1)?;
+    /// ```
     pub fn update(&mut self, pid: &u32) -> Result<(), AnyError> {
-        self.command = Process::get_cmd(*pid)?;
+        self.command = get_cmd(*pid)?;
         if self.command.len() > 50 {
             self.command.truncate(50);
         }
@@ -169,10 +197,12 @@ impl ProcessMemoryStats {
             "Private_Clean: ",
             "Private_Dirty: ",
         ];
+        // Filter out lines that don't start with the prefixes
         for line in contents
             .lines()
             .filter(|line| prefixes.iter().any(|prefix| line.starts_with(prefix)))
         {
+            // Split the line into key and value
             let mut split = line.split_whitespace();
             let key = split.next().ok_or("bad file format")?;
             let value = split.next().ok_or("bad file format")?;
@@ -223,15 +253,8 @@ impl Process {
         process
     }
 
-    pub fn get_cmd(pid: u32) -> Result<String, AnyError> {
-        let mut file = File::open(format!("/proc/{}/cmdline", pid))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        Ok(contents.replace('\0', " "))
-    }
-
     pub fn update(&mut self) -> Result<(), AnyError> {
-        self.command = Self::get_cmd(self.pid)?;
+        self.command = get_cmd(self.pid)?;
         self.memory.update(&self.pid)?;
         Ok(())
     }
@@ -246,37 +269,38 @@ impl Processes {
         Self { processes: vec![] }
     }
 
-    fn can_read_file(path: &str) -> bool {
-        File::open(path).is_ok()
-    }
-
+    /// Update the processes
+    /// Uses a thread pool to get the memory stats for each process that has a command and can be read from /proc
+    ///
+    /// # Examples
+    /// ```
+    /// let mut processes = Processes::new();
+    /// processes.update()?;
+    /// ```
     pub async fn update(&mut self) -> Result<(), AnyError> {
-        let mut processes = vec![];
+        let mut processes = Vec::new();
+
+        // Get all the processes and spawn a task to get the memory stats
         for entry in fs::read_dir("/proc")? {
             let entry = entry?;
-            let pid = entry
-                .file_name()
-                .into_string()
-                .unwrap_or_else(|_| "".to_string());
-            if let Ok(pid) = pid.parse::<u32>() {
-                if let Ok(command) = Process::get_cmd(pid) {
-                    if !command.is_empty() && Self::can_read_file(&format!("/proc/{}/smaps", pid)) {
+            // Try to parse the file name as a pid
+            if let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() {
+                if let Ok(command) = get_cmd(pid) {
+                    // Only add the process if it has a command and we can read the smaps
+                    if !command.is_empty() && can_read_file(&format!("/proc/{}/smaps", pid)) {
                         let process_fut = async move { Process::new(pid) };
-                        let process = task::spawn(process_fut);
-                        processes.push(process);
+                        let process_handle = task::spawn(process_fut);
+                        processes.push(process_handle);
                     }
                 }
             }
         }
-        let mut processes = futures::future::join_all(processes).await;
-        processes.sort_by(|a, b| {
-            a.as_ref()
-                .unwrap()
-                .memory
-                .swap
-                .cmp(&b.as_ref().unwrap().memory.swap)
-        });
-        self.processes = processes.into_iter().map(|p| p.unwrap()).collect();
+
+        // Wait for all the processes to finish
+        let mut processes = futures::future::try_join_all(processes).await?;
+        // Sort the processes by swap usage
+        processes.sort_by_key(|p| p.memory.swap);
+        self.processes = processes;
         Ok(())
     }
 
@@ -313,4 +337,15 @@ fn format_size(size: u64) -> String {
     }
 
     format!("{:.2} {}", size, unit)
+}
+
+fn can_read_file(path: &str) -> bool {
+    File::open(path).is_ok()
+}
+
+fn get_cmd(pid: u32) -> Result<String, AnyError> {
+    let mut file = File::open(format!("/proc/{}/cmdline", pid))?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents.replace('\0', " "))
 }
