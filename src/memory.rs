@@ -5,6 +5,8 @@ use std::fs::File;
 use std::io::Read;
 use tokio::task;
 
+use std::io::{BufRead, BufReader};
+
 #[derive(Default, Clone, Copy)]
 pub struct MemoryStats {
     pub total: u64,
@@ -36,9 +38,7 @@ impl MemoryStats {
     /// ### Update
     /// Uses `/proc/meminfo` to get the memory stats
     pub fn update(&mut self) -> Result<(), AnyError> {
-        let mut file = File::open("/proc/meminfo")?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        let contents = fs::read_to_string("/proc/meminfo")?;
         for line in contents.lines() {
             // Split the line into key and value
             let mut split = line.split_whitespace();
@@ -162,20 +162,6 @@ impl ProcessMemoryStats {
         Self::default()
     }
 
-    /// Get the smaps for a given process
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let smaps = get_smaps(1)?;
-    /// ```
-    pub fn get_smaps(pid: u32) -> Result<String, AnyError> {
-        let mut file = File::open(format!("/proc/{}/smaps", pid))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        Ok(contents)
-    }
-
     /// Update the process memory stats
     /// # Examples
     /// ```
@@ -189,32 +175,33 @@ impl ProcessMemoryStats {
         }
 
         self.pid = *pid;
-        let contents = Self::get_smaps(*pid)?;
-        let prefixes = [
-            "Swap: ",
-            "Pss: ",
-            "Rss: ",
-            "Private_Clean: ",
-            "Private_Dirty: ",
-        ];
-        // Filter out lines that don't start with the prefixes
-        for line in contents
-            .lines()
-            .filter(|line| prefixes.iter().any(|prefix| line.starts_with(prefix)))
-        {
-            // Split the line into key and value
-            let mut split = line.split_whitespace();
-            let key = split.next().ok_or("bad file format")?;
-            let value = split.next().ok_or("bad file format")?;
-            match key {
-                "Swap:" => self.swap += value.parse::<u64>()?,
-                "Pss:" => self.pss += value.parse::<u64>()?,
-                "Rss:" => self.rss += value.parse::<u64>()?,
-                "Private_Clean:" | "Private_Dirty:" => self.uss += value.parse::<u64>()?,
 
-                _ => (),
+        let smaps_file = File::open(format!("/proc/{}/smaps", pid))?;
+        let reader = BufReader::new(smaps_file);
+
+        let mut rss = 0;
+        let mut pss = 0;
+        let mut uss = 0;
+        let mut swap = 0;
+
+        for line in reader.lines() {
+            let line = line?;
+
+            if line.starts_with("Rss:") {
+                rss += parse_value(&line[5..])?;
+            } else if line.starts_with("Pss:") {
+                pss += parse_value(&line[5..])?;
+            } else if line.starts_with("Private_Clean:") || line.starts_with("Private_Dirty:") {
+                uss += parse_value(&line[14..])?;
+            } else if line.starts_with("Swap:") {
+                swap += parse_value(&line[6..])?;
             }
         }
+
+        self.rss = rss;
+        self.pss = pss;
+        self.uss = uss;
+        self.swap = swap;
 
         Ok(())
     }
@@ -348,4 +335,10 @@ fn get_cmd(pid: u32) -> Result<String, AnyError> {
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     Ok(contents.replace('\0', " "))
+}
+
+fn parse_value(line: &str) -> Result<u64, AnyError> {
+    let value_str = line.split_whitespace().next().unwrap_or("0");
+    let value = value_str.parse::<u64>()?;
+    Ok(value)
 }
