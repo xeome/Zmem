@@ -179,29 +179,27 @@ impl ProcessMemoryStats {
         let smaps_file = File::open(format!("/proc/{}/smaps", pid))?;
         let reader = BufReader::new(smaps_file);
 
-        let mut rss = 0;
-        let mut pss = 0;
-        let mut uss = 0;
-        let mut swap = 0;
+        let mut mem_values = (0, 0, 0, 0);
 
         for line in reader.lines() {
             let line = line?;
-
-            if line.starts_with("Rss:") {
-                rss += parse_value(&line[5..])?;
-            } else if line.starts_with("Pss:") {
-                pss += parse_value(&line[5..])?;
-            } else if line.starts_with("Private_Clean:") || line.starts_with("Private_Dirty:") {
-                uss += parse_value(&line[14..])?;
-            } else if line.starts_with("Swap:") {
-                swap += parse_value(&line[6..])?;
+            match &line {
+                line if line.starts_with("Rss:") => mem_values.0 += parse_value(&line[5..])?,
+                line if line.starts_with("Pss:") => mem_values.1 += parse_value(&line[5..])?,
+                line if line.starts_with("Private_Clean:")
+                    || line.starts_with("Private_Dirty:") =>
+                {
+                    mem_values.2 += parse_value(&line[14..])?
+                }
+                line if line.starts_with("Swap:") => mem_values.3 += parse_value(&line[6..])?,
+                _ => (),
             }
         }
 
-        self.rss = rss;
-        self.pss = pss;
-        self.uss = uss;
-        self.swap = swap;
+        self.rss = mem_values.0;
+        self.pss = mem_values.1;
+        self.uss = mem_values.2;
+        self.swap = mem_values.3;
 
         Ok(())
     }
