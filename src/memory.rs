@@ -263,23 +263,19 @@ impl Processes {
     /// processes.update()?;
     /// ```
     pub async fn update(&mut self) -> Result<(), AnyError> {
-        let mut processes = Vec::new();
-
-        // Get all the processes and spawn a task to get the memory stats
-        for entry in fs::read_dir("/proc")? {
-            let entry = entry?;
-            // Try to parse the file name as a pid
-            if let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() {
-                if let Ok(command) = get_cmd(pid) {
-                    // Only add the process if it has a command and we can read the smaps
-                    if !command.is_empty() && can_read_file(&format!("/proc/{}/smaps", pid)) {
-                        let process_fut = async move { Process::new(pid) };
-                        let process_handle = task::spawn(process_fut);
-                        processes.push(process_handle);
-                    }
+        let processes = fs::read_dir("/proc")?
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                // Try to parse the file name as a pid
+                let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
+                let command = get_cmd(pid).ok()?;
+                // Only add the process if it has a command and we can read the smaps
+                if command.is_empty() || !can_read_file(&format!("/proc/{}/smaps", pid)) {
+                    return None;
                 }
-            }
-        }
+                Some(task::spawn(async move { Process::new(pid) }))
+            })
+            .collect::<Vec<_>>();
 
         // Wait for all the processes to finish
         let mut processes = futures::future::try_join_all(processes).await?;
@@ -336,7 +332,7 @@ fn get_cmd(pid: u32) -> Result<String, AnyError> {
 }
 
 fn parse_value(line: &str) -> Result<u64, AnyError> {
-    let value_str = line.split_whitespace().next().unwrap_or("0");
-    let value = value_str.parse::<u64>()?;
+    let value_str = line.split_ascii_whitespace().next().unwrap_or("0");
+    let value = u64::from_str_radix(value_str, 10)?;
     Ok(value)
 }
