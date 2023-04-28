@@ -1,13 +1,10 @@
-use crate::AnyError;
 use colored::Colorize;
 use std::fs;
 use std::fs::File;
-use std::io::Read;
-use tokio::task;
-
 use std::io::{BufRead, BufReader};
 
-use crate::utils::{format_size, can_read_file, get_cmd, parse_value};
+use crate::utils::{format_size, get_cmd, parse_value};
+use crate::AnyError;
 
 #[derive(Default, Clone, Copy)]
 pub struct MemoryStats {

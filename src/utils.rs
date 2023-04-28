@@ -1,4 +1,6 @@
-use std::fs::File;
+use std::{fs::File, io::Read};
+
+use crate::AnyError;
 
 pub fn format_size(size: u64) -> String {
     let mut size = size as f64;
