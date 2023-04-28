@@ -1,7 +1,9 @@
 use memory::MemoryStats;
-use memory::Processes;
+use process::Processes;
 
 mod memory;
+mod process;
+mod utils;
 
 type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
