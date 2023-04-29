@@ -1,10 +1,8 @@
-#![allow(warnings)]
 use super::*;
 use colored::Colorize;
 use std::{
     fmt::{self, Display},
-    fs::{self, File},
-    io::{BufRead, BufReader},
+    fs,
 };
 
 #[derive(Default, Clone)]
