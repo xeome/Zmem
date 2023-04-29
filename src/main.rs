@@ -1,23 +1,26 @@
-use memory::MemoryStats;
-use process::Processes;
+use zmem::*;
 
-mod memory;
-mod process;
-mod utils;
+fn main() {
+    let mut mem = MemoryStats::default();
+    let mut processes = Processes::default();
 
-type AnyError = Box<dyn std::error::Error + Send + Sync>;
+    // let time = std::time::Instant::now();
 
-#[tokio::main]
-async fn main() {
-    let mut mem = MemoryStats::new();
-    if let Err(e) = mem.update() {
-        println!("error updating memory stats: {}", e);
-    }
-    mem.display();
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            if let Err(err) = mem.update() {
+                println!("error updating memory stats: {err}");
+            }
+            println!("{mem}");
+        });
+        s.spawn(|| {
+            if let Err(err) = processes.update() {
+                println!("error updating processes: {err}");
+            }
+            processes.sort_by_swap();
+            println!("{processes}");
+        });
+    });
 
-    let mut processes = Processes::new();
-    if let Err(e) = processes.update().await {
-        println!("error updating processes: {}", e);
-    }
-    processes.display();
+    // println!("{:?}", time.elapsed());
 }
