@@ -20,18 +20,25 @@ impl Processes {
     /// processes.update().unwrap();
     /// ```
     pub fn update(&mut self) -> io::Result<()> {
-        let mut processes = fs::read_dir("/proc")?;
-        while let Some(Ok(entry)) = processes.next() {
+        let mut proc = fs::read_dir("/proc")?;
+
+        let mut threads = vec![];
+        while let Some(Ok(entry)) = proc.next() {
             let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else { continue };
-            let Ok(cmd) = get_cmd(pid) else { continue };
-            if cmd.is_empty() {
-                continue;
+            threads.push(std::thread::spawn(move || {
+                let cmd = get_cmd(pid).ok()?;
+                if cmd.is_empty() {
+                    return None;
+                }
+                let mut mem = ProcessMemoryStats::default();
+                mem.update(pid, cmd).ok()?;
+                Some(mem)
+            }));
+        }
+        for thread in threads {
+            if let Ok(Some(mem)) = thread.join() {
+                self.mem_stats.push(mem);
             }
-            let mut mem_stat = ProcessMemoryStats::default();
-            if mem_stat.update(pid, cmd).is_err() {
-                continue;
-            }
-            self.mem_stats.push(mem_stat);
         }
         Ok(())
     }

@@ -149,7 +149,6 @@ impl Display for MemoryStats {
 #[derive(Default, Clone)]
 pub struct ProcessMemoryStats {
     pub pid: u32,
-    pub username: String,
     pub command: String,
     pub swap: u64,
     pub uss: u64,
