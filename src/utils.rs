@@ -21,10 +21,6 @@ pub fn format_size(size: u64) -> String {
     format!("{:.2} {}", size, unit)
 }
 
-pub fn can_read_file(path: &str) -> bool {
-    File::open(path).is_ok()
-}
-
 pub fn get_cmd(pid: u32) -> io::Result<String> {
     let mut file = File::open(format!("/proc/{pid}/cmdline"))?;
     let mut contents = String::new();

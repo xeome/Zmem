@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use super::*;
 use colored::Colorize;
 use std::{
@@ -69,7 +70,8 @@ impl MemoryStats {
 impl Display for MemoryStats {
     /// ### Display
     /// Displays the memory stats in a human readable format:
-    /// ```
+    ///
+    /// ```txt
     ///             total            used            free          shared      buff/cache       available
     ///Mem:      7.15 GB         4.91 GB       340.04 MB       122.59 MB         1.91 GB         1.98 GB
     ///Swap:     9.77 GB         2.17 GB         7.60 GB                       256.40 MB         7.60 GB
@@ -158,47 +160,34 @@ pub struct ProcessMemoryStats {
 }
 
 impl ProcessMemoryStats {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Update the process memory stats
     /// # Examples
+    ///
+    /// ```no_run
+    /// let mut pms = zmem::ProcessMemoryStats::default();
+    /// pms.update(1, "cmd".into()).unwrap();
     /// ```
-    /// let mut pms = ProcessMemoryStats::new();
-    /// pms.update(1)?;
-    /// ```
-    pub fn update(&mut self, pid: &u32) -> Result {
-        self.command = get_cmd(*pid)?;
-        if self.command.len() > 50 {
-            self.command.truncate(50);
+    pub fn update(&mut self, pid: u32, mut cmd: String) -> Result {
+        if cmd.len() > 50 {
+            cmd.truncate(50);
         }
-
-        self.pid = *pid;
-
-        let smaps_file = File::open(format!("/proc/{pid}/smaps"))?;
-        let mut reader = BufReader::new(smaps_file);
-        let mut line = String::new();
-
-        let mut mem_values = (0, 0, 0, 0);
-
-        while reader.read_line(&mut line)? > 0 {
+        self.pid = pid;
+        self.command = cmd;
+        self.swap = 0;
+        self.uss = 0;
+        self.pss = 0;
+        self.rss = 0;
+        for line in fs::read_to_string(format!("/proc/{pid}/smaps"))?.lines() {
             if line.starts_with("Rss:") {
-                mem_values.0 += parse_value(&line[5..])?;
+                self.rss += parse_value(&line[5..])?;
             } else if line.starts_with("Pss:") {
-                mem_values.1 += parse_value(&line[5..])?;
+                self.pss += parse_value(&line[5..])?;
             } else if line.starts_with("Private_Clean:") || line.starts_with("Private_Dirty:") {
-                mem_values.2 += parse_value(&line[14..])?;
+                self.uss += parse_value(&line[14..])?;
             } else if line.starts_with("Swap:") {
-                mem_values.3 += parse_value(&line[6..])?;
+                self.swap += parse_value(&line[6..])?;
             }
-
-            line.clear();
         }
-        self.rss = mem_values.0;
-        self.pss = mem_values.1;
-        self.uss = mem_values.2;
-        self.swap = mem_values.3;
         Ok(())
     }
 }
