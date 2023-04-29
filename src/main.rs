@@ -1,23 +1,16 @@
-use memory::MemoryStats;
-use process::Processes;
+use zmem::*;
 
-mod memory;
-mod process;
-mod utils;
-
-type AnyError = Box<dyn std::error::Error + Send + Sync>;
-
-#[tokio::main]
-async fn main() {
-    let mut mem = MemoryStats::new();
-    if let Err(e) = mem.update() {
-        println!("error updating memory stats: {}", e);
+fn main() {
+    let mut mem = MemoryStats::default();
+    if let Err(err) = mem.update() {
+        println!("error updating memory stats: {err}");
     }
-    mem.display();
+    println!("{mem}");
 
-    let mut processes = Processes::new();
-    if let Err(e) = processes.update().await {
-        println!("error updating processes: {}", e);
+    let mut processes = Processes::default();
+    if let Err(err) = processes.update() {
+        println!("error updating processes: {err}");
     }
-    processes.display();
+    processes.sort_by_swap();
+    println!("{processes}");
 }
