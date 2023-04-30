@@ -175,21 +175,24 @@ impl ProcessMemoryStats {
 
         self.pid = *pid;
 
-        let smaps_file = File::open(format!("/proc/{}/smaps", pid))?;
+        // This is the sum of all the smaps data but it is much more performant to get it this way.
+        // Since 4.14 and requires CONFIG_PROC_PAGE_MONITOR
+        let smaps_file = File::open(format!("/proc/{}/smaps_rollup", pid))?;
         let mut reader = BufReader::new(smaps_file);
-        let mut line = String::new();
+        let mut line = String::new(); // Line to be reused, saves allocations, after testing it seems to save 5-10% of the time
 
+        // rss, pss, private_clean + private_dirty (uss), swap
+        // Local variables are faster than struct fields, Data locality is important
         let mut mem_values = (0, 0, 0, 0);
 
         while reader.read_line(&mut line)? > 0 {
-            if line.starts_with("Rss:") {
-                mem_values.0 += parse_value(&line[5..])?;
-            } else if line.starts_with("Pss:") {
-                mem_values.1 += parse_value(&line[5..])?;
-            } else if line.starts_with("Private_Clean:") || line.starts_with("Private_Dirty:") {
-                mem_values.2 += parse_value(&line[14..])?;
-            } else if line.starts_with("Swap:") {
-                mem_values.3 += parse_value(&line[6..])?;
+            match &line[..10] {
+                // lines are hardcoded to be longer than 10 chars in the kernel code so this is "safe"
+                "Rss:      " => mem_values.0 = parse_value(&line[5..])?,
+                "Pss:      " => mem_values.1 = parse_value(&line[5..])?,
+                "Private_Cl" | "Private_Di" => mem_values.2 += parse_value(&line[14..])?,
+                "Swap:     " => mem_values.3 = parse_value(&line[6..])?,
+                _ => (),
             }
 
             line.clear();
