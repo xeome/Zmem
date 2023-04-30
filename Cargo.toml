@@ -12,3 +12,4 @@ tokio = {version = "1.27.0", features = ["full"]}
 
 [profile.release]
 debug = true
+lto = "thin"
