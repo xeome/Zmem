@@ -56,8 +56,8 @@ impl Processes {
                 // Try to parse the file name as a pid
                 let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
                 let command = get_cmd(pid).ok()?;
-                // Only add the process if it has a command and we can read the smaps
-                if command.is_empty() || !can_read_file(&format!("/proc/{}/smaps", pid)) {
+                // Only add the process if it has a command and we can read the smaps_rollup
+                if command.is_empty() || !can_read_file(&format!("/proc/{}/smaps_rollup", pid)) {
                     return None;
                 }
                 Some(task::spawn(async move { Process::new(pid) }))
