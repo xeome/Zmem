@@ -41,8 +41,10 @@ impl MemoryStats {
         for line in contents.lines() {
             // Split the line into key and value
             let mut split = line.split_whitespace();
-            let key = split.next().ok_or("bad file format")?;
-            let value = split.next().ok_or("bad file format")?;
+            let (key, value) = (
+                split.next().ok_or("bad file format")?,
+                split.next().ok_or("bad file format")?,
+            );
             match key {
                 "MemTotal:" => self.total = value.parse()?,
                 "MemFree:" => self.free = value.parse()?,
