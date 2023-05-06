@@ -26,7 +26,7 @@ zmem
 # Contributing
 We welcome contributions from the community to improve Zmem. If you have any ideas for new features, suggestions for improvements, or you have discovered a bug, please feel free to open an issue or submit a pull request.
 
-When submitting pull requests, please make sure that your code adheres to the project's coding standards and guidelines. It is recommended that you measure the tool's performance using appropriate metrics and benchmarks, such as by using the `time target/release/zmem command`. This project is performance-sensitive, so it is important to ensure that any changes do not negatively impact performance.
+When submitting pull requests, please make sure that your code adheres to the project's coding standards and guidelines. It is recommended that you measure the tool's performance using appropriate metrics and benchmarks, such as by using the `time target/release/zmem` command. This project is performance-sensitive, so it is important to ensure that any changes do not negatively impact performance.
 
 Before making any significant changes to the project, it is best to open an issue and discuss your proposal with the project maintainers. This will help you get feedback, ensure that your changes align with the project's goals, and avoid duplicating work.
 
