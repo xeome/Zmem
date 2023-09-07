@@ -22,7 +22,6 @@ pub struct MemoryStats {
     pub swap_cached: u64,
     pub compression_ratio: f64,
     pub swap_used: u64,
-    pub swap_available: u64,
     pub totalvmem: u64,
     pub freevmem: u64,
     pub usedvmem: u64,
@@ -63,12 +62,11 @@ impl MemoryStats {
         }
         self.used = self.total - self.free - self.buffers - self.cached;
         self.swap_used = self.swap_total - self.swap_free;
-        self.swap_available = self.swap_total - self.swap_used;
         self.compression_ratio = self.zswap as f64 / self.zswap_compressed as f64;
         self.totalvmem = self.total + self.swap_total;
         self.freevmem = self.free + self.swap_free;
         self.usedvmem = self.used + self.swap_used;
-        self.availablevmem = self.available + self.swap_available;
+        self.availablevmem = self.available + self.swap_free;
 
         Ok(())
     }
@@ -119,7 +117,7 @@ impl MemoryStats {
             fmt(self.swap_free).cyan(),
             "",
             fmt(self.swap_cached).yellow(),
-            fmt(self.swap_available).blue()
+            fmt(self.swap_free).blue()
         );
         println!(
             "{} {} {} {} {:>15} {:>15} {}",
