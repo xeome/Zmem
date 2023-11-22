@@ -9,6 +9,7 @@ mod utils;
 
 type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
+/// Zmem is a Linux memory monitoring program that displays detailed information about virtual memory.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {

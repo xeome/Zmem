@@ -1,4 +1,4 @@
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -27,6 +27,7 @@ pub struct MemoryStats {
     pub freevmem: u64,
     pub usedvmem: u64,
     pub availablevmem: u64,
+    pub swap_on_disk: u64,
 }
 
 impl MemoryStats {
@@ -69,6 +70,7 @@ impl MemoryStats {
         self.freevmem = self.free + self.swap_free;
         self.usedvmem = self.used + self.swap_used;
         self.availablevmem = self.available + self.swap_available;
+        self.swap_on_disk = self.swap_used - self.zswap;
 
         Ok(())
     }
@@ -76,7 +78,7 @@ impl MemoryStats {
     /// ### Display
     /// Displays the memory stats in a human readable format:
     /// ```
-    ///             total            used            free          shared      buff/cache       available
+    ///            total            used            free          shared      buff/cache       available
     ///Mem:      7.15 GB         4.91 GB       340.04 MB       122.59 MB         1.91 GB         1.98 GB
     ///Swap:     9.77 GB         2.17 GB         7.60 GB                       256.40 MB         7.60 GB
     ///Total:   16.92 GB         7.08 GB         7.93 GB                                         9.58 GB
@@ -85,65 +87,115 @@ impl MemoryStats {
     ///Zswap:    1.68 GB       764.75 MB           2.256
     /// ```
     pub fn display(&self) {
-        let fmt = |s: u64| format!("{:>15}", format_size(s));
-        let fmt_mem = |s: u64| format!("{:>12}", format_size(s));
-        let fmt_swap = |s: u64| format!("{:>11}", format_size(s));
-        let fmt_total = |s: u64| format!("{:>10}", format_size(s));
-        let fmt_zswap = |s: u64| format!("{:>10}", format_size(s));
-        let fmt_ratio = |s: f64| format!("{:>15.3}", s);
+        fn fmt(s: String) -> String {
+            format!("{:>13}", s)
+        }
 
-        println!(
-            "{:>17} {:>15} {:>15} {:>15} {:>15} {:>15}",
-            "total".bold(),
-            "used".bold(),
-            "free".bold(),
-            "shared".bold(),
-            "buff/cache".bold(),
-            "available".bold()
+        fn print_header() {
+            println!(
+                "{:>8} {} {} {} {} {} {}",
+                "",
+                fmt("total".to_string()).bold(),
+                fmt("used".to_string()).bold(),
+                fmt("free".to_string()).bold(),
+                fmt("shared".to_string()).bold(),
+                fmt("buff/cache".to_string()).bold(),
+                fmt("available".to_string()).bold(),
+            );
+        }
+
+        print_header();
+
+        fn print_row(
+            name: ColoredString,
+            total: u64,
+            used: u64,
+            free: u64,
+            shared: u64,
+            buffers: u64,
+            cached: u64,
+            available: u64,
+        ) {
+            println!(
+                "{:<8} {} {} {} {} {} {}",
+                name,
+                fmt(format_size(total)).green(),
+                fmt(format_size(used)).red(),
+                fmt(format_size(free)).blue(),
+                fmt(format_size(shared)).yellow(),
+                fmt(format_size(buffers + cached)).magenta(),
+                fmt(format_size(available)).blue()
+            );
+        }
+
+        print_row(
+            "Mem:".blue().bold(),
+            self.total,
+            self.used,
+            self.free,
+            self.shared,
+            self.buffers,
+            self.cached,
+            self.available,
         );
-        println!(
-            "{} {} {} {} {} {} {}",
-            "Mem:".bold().cyan(),
-            fmt_mem(self.total).green(),
-            fmt(self.used).red(),
-            fmt(self.free).cyan(),
-            fmt(self.shared).yellow(),
-            fmt(self.buffers + self.cached).magenta(),
-            fmt(self.available).blue()
+
+        print_row(
+            "Swap:".magenta().bold(),
+            self.swap_total,
+            self.swap_used,
+            self.swap_free,
+            0,
+            0,
+            self.swap_cached,
+            self.swap_available,
         );
-        println!(
-            "{} {} {} {} {:>15} {} {}",
-            "Swap:".bold().purple(),
-            fmt_swap(self.swap_total).green(),
-            fmt(self.swap_used).red(),
-            fmt(self.swap_free).cyan(),
-            "",
-            fmt(self.swap_cached).yellow(),
-            fmt(self.swap_available).blue()
-        );
-        println!(
-            "{} {} {} {} {:>15} {:>15} {}",
+
+        print_row(
             "Total:".bold().blue(),
-            fmt_total(self.totalvmem).green(),
-            fmt(self.usedvmem).red(),
-            fmt(self.freevmem).cyan(),
-            "",
-            "",
-            fmt(self.availablevmem).blue()
+            self.totalvmem,
+            self.usedvmem,
+            self.freevmem,
+            self.shared,
+            self.buffers,
+            self.cached,
+            self.availablevmem,
         );
-        println!(
-            "\n{:>17} {:>15} {:>15}",
-            "Zswap".bold(),
-            "Compressed".bold(),
-            "Ratio".bold()
+
+        println!();
+
+        fn print_zswap_header() {
+            println!(
+                "{:>8} {} {} {} {}",
+                "",
+                fmt("Zswap".to_string()).bold(),
+                fmt("Compressed".to_string()).bold(),
+                fmt("Ratio".to_string()).bold(),
+                fmt("On Disk".to_string()).bold(),
+            );
+        }
+
+        print_zswap_header();
+
+        fn print_zswap(name: &str, zswap: u64, compressed: u64, ratio: f64, on_disk: u64) {
+            println!(
+                "{:<8} {} {} {} {}",
+                name.magenta().bold(),
+                fmt(format_size(zswap)).green(),
+                fmt(format_size(compressed)).red(),
+                fmt(format!("{:.3}", ratio)).blue(),
+                fmt(format_size(on_disk)).yellow(),
+            );
+        }
+
+        print_zswap(
+            "Zswap:",
+            self.zswap,
+            self.zswap_compressed,
+            self.compression_ratio,
+            self.swap_on_disk,
         );
-        println!(
-            "{} {} {} {}",
-            "Zswap:".bold().purple(),
-            fmt_zswap(self.zswap).green(),
-            fmt(self.zswap_compressed).red(),
-            fmt_ratio(self.compression_ratio).cyan()
-        );
+
+        println!();
     }
 }
 
