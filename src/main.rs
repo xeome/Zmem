@@ -1,3 +1,5 @@
+use clap::Parser;
+
 use memory::MemoryStats;
 use process::Processes;
 
@@ -7,8 +9,19 @@ mod utils;
 
 type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Display per-process memory usage or not
+    /// (default: false)
+    #[clap(short, long)]
+    per_process: bool,
+}
+
 #[tokio::main]
 async fn main() {
+    let args = Args::parse();
+
     let mut mem = MemoryStats::new();
     if let Err(e) = mem.update() {
         println!("error updating memory stats: {}", e);
@@ -19,5 +32,8 @@ async fn main() {
     if let Err(e) = processes.update().await {
         println!("error updating processes: {}", e);
     }
-    processes.display();
+
+    if args.per_process {
+        processes.display();
+    }
 }
