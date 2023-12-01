@@ -29,12 +29,14 @@ async fn main() {
     }
     mem.display();
 
+    if !args.per_process {
+        return;
+    }
+
     let mut processes = Processes::new();
     if let Err(e) = processes.update().await {
         println!("error updating processes: {}", e);
     }
 
-    if args.per_process {
-        processes.display();
-    }
+    processes.display();
 }
