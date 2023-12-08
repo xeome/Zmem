@@ -17,26 +17,27 @@ struct Args {
     /// (default: false)
     #[clap(short, long)]
     per_process: bool,
+    summary: bool,
 }
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    let mut mem = MemoryStats::new();
-    if let Err(e) = mem.update() {
-        println!("error updating memory stats: {}", e);
-    }
-    mem.display();
-
-    if !args.per_process {
-        return;
+    if args.summary {
+        let mut mem = MemoryStats::new();
+        if let Err(e) = mem.update() {
+            println!("error updating memory stats: {}", e);
+        }
+        mem.display();
     }
 
-    let mut processes = Processes::new();
-    if let Err(e) = processes.update().await {
-        println!("error updating processes: {}", e);
-    }
+    if args.per_process {
+        let mut processes = Processes::new();
+        if let Err(e) = processes.update().await {
+            println!("error updating processes: {}", e);
+        }
 
-    processes.display();
+        processes.display();
+    }
 }
