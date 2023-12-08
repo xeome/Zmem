@@ -17,6 +17,9 @@ struct Args {
     /// (default: false)
     #[clap(short, long)]
     per_process: bool,
+    /// Display a summary of memory usage or not
+    /// (default: true)
+    #[clap(short, long, default_value = "true")]
     summary: bool,
 }
 
