@@ -3,7 +3,7 @@ use std::fs;
 use tokio::task;
 
 use crate::memory::ProcessMemoryStats;
-use crate::utils::{can_read_file, get_cmd};
+use crate::utils::{format_size, get_cmd};
 use crate::AnyError;
 
 pub struct Process {
@@ -13,22 +13,37 @@ pub struct Process {
 }
 
 impl Process {
-    pub fn new(pid: u32) -> Self {
+    pub fn new(pid: u32) -> Result<Self, AnyError> {
         let mut process = Self {
             pid,
             command: String::new(),
             memory: ProcessMemoryStats::new(),
         };
-        process.update().unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-        });
-        process
+        process.update()?;
+        Ok(process)
     }
 
     pub fn update(&mut self) -> Result<(), AnyError> {
-        self.command = get_cmd(self.pid)?;
         self.memory.update(&self.pid)?;
+        self.command = get_cmd(self.pid)?;
+        if self.command.len() > 50 {
+            self.command.truncate(50);
+        }
         Ok(())
+    }
+
+    pub fn display(&self) {
+        let fmt = |s: String| format!("{:>14}", s);
+
+        println!(
+            "{:>10} {} {} {} {} {}",
+            self.pid,
+            fmt(format_size(self.memory.swap)).red(),
+            fmt(format_size(self.memory.uss)).green(),
+            fmt(format_size(self.memory.pss)).blue(),
+            fmt(format_size(self.memory.rss)).cyan(),
+            self.command
+        );
     }
 }
 
@@ -55,20 +70,18 @@ impl Processes {
                 let entry = entry.ok()?;
                 // Try to parse the file name as a pid
                 let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
-                let command = get_cmd(pid).ok()?;
-                // Only add the process if it has a command and we can read the smaps_rollup
-                if command.is_empty() || !can_read_file(&format!("/proc/{}/smaps_rollup", pid)) {
-                    return None;
-                }
                 Some(task::spawn(async move { Process::new(pid) }))
             })
             .collect::<Vec<_>>();
 
         // Wait for all the processes to finish
-        let mut processes = futures::future::try_join_all(processes).await?;
+        let processes = futures::future::try_join_all(processes).await?;
         // Sort the processes by swap usage
-        processes.sort_by_key(|p| p.memory.swap);
-        self.processes = processes;
+        self.processes = processes
+            .into_iter()
+            .filter_map(Result::ok)
+            .collect();
+        self.processes.sort_by_key(|p| p.memory.swap);
         Ok(())
     }
 
@@ -83,7 +96,7 @@ impl Processes {
             "COMMAND".bold()
         );
         for process in &self.processes {
-            process.memory.display();
+            process.display();
         }
     }
 }

@@ -3,7 +3,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use crate::utils::{format_size, get_cmd, parse_value};
+use crate::utils::{format_size, parse_value};
 use crate::AnyError;
 
 #[derive(Default, Clone, Copy)]
@@ -201,9 +201,6 @@ impl MemoryStats {
 
 #[derive(Default, Clone)]
 pub struct ProcessMemoryStats {
-    pub pid: u32,
-    pub username: String,
-    pub command: String,
     pub swap: u64,
     pub uss: u64,
     pub pss: u64,
@@ -222,13 +219,6 @@ impl ProcessMemoryStats {
     /// pms.update(1)?;
     /// ```
     pub fn update(&mut self, pid: &u32) -> Result<(), AnyError> {
-        self.command = get_cmd(*pid)?;
-        if self.command.len() > 50 {
-            self.command.truncate(50);
-        }
-
-        self.pid = *pid;
-
         // This is the sum of all the smaps data but it is much more performant to get it this way.
         // Since 4.14 and requires CONFIG_PROC_PAGE_MONITOR
         let smaps_file = File::open(format!("/proc/{}/smaps_rollup", pid))?;
@@ -258,19 +248,5 @@ impl ProcessMemoryStats {
         self.swap = mem_values.3;
 
         Ok(())
-    }
-
-    pub fn display(&self) {
-        let fmt = |s: String| format!("{:>14}", s);
-
-        println!(
-            "{:>10} {} {} {} {} {}",
-            self.pid,
-            fmt(format_size(self.swap)).red(),
-            fmt(format_size(self.uss)).green(),
-            fmt(format_size(self.pss)).blue(),
-            fmt(format_size(self.rss)).cyan(),
-            self.command
-        );
     }
 }
