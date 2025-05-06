@@ -12,7 +12,7 @@ description = "Zmem is a Linux memory monitoring program that displays detailed 
 clap = { version = "4.5.37", features = ["derive"] }
 colored = "3.0.0"
 futures = "0.3.31"
-tokio = { version = "1.44.2", features = ["full"] }
+tokio = { version = "1.45.0", features = ["full"] }
 
 [profile.release]
 lto = "thin"
