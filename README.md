@@ -29,6 +29,14 @@ or if you want per-process swap usage:
 zmem -p
 ```
 
+You can also sort per-process output by a different memory column:
+
+```bash
+zmem -p --sort-by uss
+```
+
+Available values for `--sort-by` are `swap` (default), `uss`, `pss`, and `rss`.
+
 ![zmem](assets/zmem.png)
 
 ## Contributing

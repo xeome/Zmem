@@ -1,10 +1,19 @@
 use colored::Colorize;
+use clap::ValueEnum;
 use std::fs;
 use tokio::task;
 
 use crate::memory::ProcessMemoryStats;
 use crate::utils::{format_size, get_cmd};
 use crate::AnyError;
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum SortColumn {
+    Swap,
+    Uss,
+    Pss,
+    Rss,
+}
 
 pub struct Process {
     pid: u32,
@@ -64,7 +73,7 @@ impl Processes {
     /// let mut processes = Processes::new();
     /// processes.update()?;
     /// ```
-    pub async fn update(&mut self) -> Result<(), AnyError> {
+    pub async fn update(&mut self, sort_by: SortColumn) -> Result<(), AnyError> {
         let processes = fs::read_dir("/proc")?
             .filter_map(|entry| {
                 let entry = entry.ok()?;
@@ -76,12 +85,13 @@ impl Processes {
 
         // Wait for all the processes to finish
         let processes = futures::future::try_join_all(processes).await?;
-        // Sort the processes by swap usage
+        // Sort the processes by selected memory column
         self.processes = processes
             .into_iter()
             .filter_map(Result::ok)
             .collect();
-        self.processes.sort_by_key(|p| p.memory.swap);
+        self.processes
+            .sort_by_key(|p| process_sort_key(&p.memory, sort_by));
         Ok(())
     }
 
@@ -98,5 +108,34 @@ impl Processes {
         for process in &self.processes {
             process.display();
         }
+    }
+}
+
+fn process_sort_key(memory: &ProcessMemoryStats, sort_by: SortColumn) -> u64 {
+    match sort_by {
+        SortColumn::Swap => memory.swap,
+        SortColumn::Uss => memory.uss,
+        SortColumn::Pss => memory.pss,
+        SortColumn::Rss => memory.rss,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_sort_key_uses_requested_column() {
+        let memory = ProcessMemoryStats {
+            swap: 1,
+            uss: 2,
+            pss: 3,
+            rss: 4,
+        };
+
+        assert_eq!(process_sort_key(&memory, SortColumn::Swap), 1);
+        assert_eq!(process_sort_key(&memory, SortColumn::Uss), 2);
+        assert_eq!(process_sort_key(&memory, SortColumn::Pss), 3);
+        assert_eq!(process_sort_key(&memory, SortColumn::Rss), 4);
     }
 }

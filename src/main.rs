@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use memory::MemoryStats;
-use process::Processes;
+use process::{Processes, SortColumn};
 
 mod memory;
 mod process;
@@ -21,6 +21,10 @@ struct Args {
     /// (default: true)
     #[clap(short, long, default_value = "true")]
     summary: bool,
+    /// Sort per-process output by memory column
+    /// (default: swap)
+    #[clap(long, value_enum, default_value_t = SortColumn::Swap)]
+    sort_by: SortColumn,
 }
 
 #[tokio::main]
@@ -37,7 +41,7 @@ async fn main() {
 
     if args.per_process {
         let mut processes = Processes::new();
-        if let Err(e) = processes.update().await {
+        if let Err(e) = processes.update(args.sort_by).await {
             println!("error updating processes: {}", e);
         }
 
