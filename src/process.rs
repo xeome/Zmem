@@ -1,5 +1,5 @@
-use colored::Colorize;
 use clap::ValueEnum;
+use colored::Colorize;
 use std::fs;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;

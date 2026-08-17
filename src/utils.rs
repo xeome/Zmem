@@ -30,6 +30,6 @@ pub fn get_cmd(pid: u32) -> Result<String, AnyError> {
 
 pub fn parse_value(line: &str) -> Result<u64, AnyError> {
     let value_str = line.split_ascii_whitespace().next().unwrap_or("0");
-    let value = u64::from_str_radix(value_str, 10)?;
+    let value = value_str.parse::<u64>()?;
     Ok(value)
 }

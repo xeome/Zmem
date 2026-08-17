@@ -119,6 +119,7 @@ impl MemoryStats {
 
         print_header();
 
+        #[allow(clippy::too_many_arguments)]
         fn print_row(
             name: ColoredString,
             total: u64,
