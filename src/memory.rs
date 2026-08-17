@@ -39,6 +39,12 @@ impl MemoryStats {
     /// Uses `/proc/meminfo` to get the memory stats
     pub fn update(&mut self) -> Result<(), AnyError> {
         let contents = fs::read_to_string("/proc/meminfo")?;
+        self.update_from_meminfo(&contents)
+    }
+
+    /// Parses the contents of `/proc/meminfo` and derives the rest of the stats.
+    /// Split out from `update` so the derived math is testable without the filesystem.
+    fn update_from_meminfo(&mut self, contents: &str) -> Result<(), AnyError> {
         for line in contents.lines() {
             // Split the line into key and value
             let mut split = line.split_whitespace();
@@ -50,7 +56,6 @@ impl MemoryStats {
                 "MemTotal:" => self.total = value.parse()?,
                 "MemFree:" => self.free = value.parse()?,
                 "MemAvailable:" => self.available = value.parse()?,
-                "MemUsed:" => self.used = value.parse()?,
                 "Shmem:" => self.shared = value.parse()?,
                 "Buffers:" => self.buffers = value.parse()?,
                 "Cached:" => self.cached = value.parse()?,
@@ -62,15 +67,23 @@ impl MemoryStats {
                 _ => (),
             }
         }
-        self.used = self.total - self.free - self.buffers - self.cached;
-        self.swap_used = self.swap_total - self.swap_free;
-        self.swap_available = self.swap_total - self.swap_used;
-        self.compression_ratio = self.zswap as f64 / self.zswap_compressed as f64;
+        self.used = self
+            .total
+            .saturating_sub(self.free)
+            .saturating_sub(self.buffers)
+            .saturating_sub(self.cached);
+        self.swap_used = self.swap_total.saturating_sub(self.swap_free);
+        self.swap_available = self.swap_free;
+        self.compression_ratio = if self.zswap_compressed == 0 {
+            0.0
+        } else {
+            self.zswap as f64 / self.zswap_compressed as f64
+        };
         self.totalvmem = self.total + self.swap_total;
         self.freevmem = self.free + self.swap_free;
         self.usedvmem = self.used + self.swap_used;
         self.availablevmem = self.available + self.swap_available;
-        self.swap_on_disk = self.swap_used - self.zswap;
+        self.swap_on_disk = self.swap_used.saturating_sub(self.zswap);
 
         Ok(())
     }

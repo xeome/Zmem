@@ -11,8 +11,6 @@ description = "Zmem is a Linux memory monitoring program that displays detailed 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 colored = "3.1.1"
-futures = "0.3.32"
-tokio = { version = "1.52.3", features = ["full"] }
 
 [profile.release]
 lto = "thin"

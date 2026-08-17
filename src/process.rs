@@ -1,7 +1,8 @@
 use colored::Colorize;
 use clap::ValueEnum;
 use std::fs;
-use tokio::task;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
 
 use crate::memory::ProcessMemoryStats;
 use crate::utils::{format_size, get_cmd};
@@ -13,6 +14,19 @@ pub enum SortColumn {
     Uss,
     Pss,
     Rss,
+}
+
+/// Truncates `s` to at most `max_len` bytes without splitting a multi-byte UTF-8 char.
+/// `String::truncate` panics on a non-char-boundary index, which a raw byte-length
+/// cutoff on a cmdline (arbitrary bytes from the OS) can easily hit.
+fn truncate_char_boundary(s: &mut String, max_len: usize) {
+    if s.len() > max_len {
+        let mut end = max_len;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
 }
 
 pub struct Process {
@@ -35,9 +49,7 @@ impl Process {
     pub fn update(&mut self) -> Result<(), AnyError> {
         self.memory.update(&self.pid)?;
         self.command = get_cmd(self.pid)?;
-        if self.command.len() > 50 {
-            self.command.truncate(50);
-        }
+        truncate_char_boundary(&mut self.command, 50);
         Ok(())
     }
 
@@ -66,30 +78,50 @@ impl Processes {
     }
 
     /// Update the processes
-    /// Uses a thread pool to get the memory stats for each process that has a command and can be read from /proc
+    /// Reads each process's memory stats in parallel across a pool of OS threads sized to
+    /// the CPU count. Reading smaps_rollup walks the target's page tables under its mmap
+    /// lock, so cost per pid varies a lot (a browser tab vs. a shell); workers pull the
+    /// next pid from a shared cursor instead of owning a fixed slice, so one thread stuck
+    /// on a few heavy processes doesn't leave the others idle.
     ///
     /// # Examples
     /// ```
     /// let mut processes = Processes::new();
-    /// processes.update()?;
+    /// processes.update(SortColumn::Swap)?;
     /// ```
-    pub async fn update(&mut self, sort_by: SortColumn) -> Result<(), AnyError> {
-        let processes = fs::read_dir("/proc")?
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                // Try to parse the file name as a pid
-                let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
-                Some(task::spawn(async move { Process::new(pid) }))
-            })
-            .collect::<Vec<_>>();
-
-        // Wait for all the processes to finish
-        let processes = futures::future::try_join_all(processes).await?;
-        // Sort the processes by selected memory column
-        self.processes = processes
-            .into_iter()
-            .filter_map(Result::ok)
+    pub fn update(&mut self, sort_by: SortColumn) -> Result<(), AnyError> {
+        let pids: Vec<u32> = fs::read_dir("/proc")?
+            .filter_map(|entry| entry.ok()?.file_name().to_string_lossy().parse().ok())
             .collect();
+
+        let worker_count = thread::available_parallelism().map_or(1, |n| n.get());
+        let next = AtomicUsize::new(0);
+
+        self.processes = thread::scope(|scope| {
+            let handles: Vec<_> = (0..worker_count)
+                .map(|_| {
+                    let next = &next;
+                    let pids = &pids;
+                    scope.spawn(move || {
+                        let mut found = Vec::new();
+                        while let Some(&pid) = pids.get(next.fetch_add(1, Ordering::Relaxed)) {
+                            if let Ok(process) = Process::new(pid) {
+                                found.push(process);
+                            }
+                        }
+                        found
+                    })
+                })
+                .collect();
+
+            // A panicked worker thread is dropped rather than failing the whole batch.
+            handles
+                .into_iter()
+                .filter_map(|h| h.join().ok())
+                .flatten()
+                .collect()
+        });
+        // Sort the processes by selected memory column
         self.processes
             .sort_by_key(|p| process_sort_key(&p.memory, sort_by));
         Ok(())
@@ -137,5 +169,14 @@ mod tests {
         assert_eq!(process_sort_key(&memory, SortColumn::Uss), 2);
         assert_eq!(process_sort_key(&memory, SortColumn::Pss), 3);
         assert_eq!(process_sort_key(&memory, SortColumn::Rss), 4);
+    }
+
+    #[test]
+    fn truncate_does_not_split_multibyte_char() {
+        // Byte 50 lands in the middle of a multi-byte char; must not panic.
+        let mut s = "a".repeat(49) + "日本語";
+        truncate_char_boundary(&mut s, 50);
+        assert!(s.len() <= 50);
+        assert!(s.is_char_boundary(s.len()));
     }
 }
