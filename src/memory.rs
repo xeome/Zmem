@@ -34,9 +34,13 @@ pub struct MemoryStats {
 /// Every zram swap device, summed into one row. kB, to match meminfo.
 #[derive(Default, Clone, Copy)]
 pub struct ZramStats {
-    pub resident: u64,
+    pub stored: u64,
     pub compressed: u64,
     pub ratio: f64,
+    /// Slot count rather than `orig_data_size`: the kernel holds swap slots it has
+    /// handed zram no data for (`swapon` and `zramctl` disagree by that much), and
+    /// a slot with no data anywhere is not on a disk either.
+    pub in_ram: u64,
 }
 
 impl MemoryStats {
@@ -48,14 +52,14 @@ impl MemoryStats {
     /// Uses `/proc/meminfo`, plus `/proc/swaps` and zram sysfs for the on-disk split
     pub fn update(&mut self) -> Result<(), AnyError> {
         self.zram = read_zram_stats();
-        let zram_resident = self.zram.map_or(0, |z| z.resident);
+        let zram_in_ram = self.zram.map_or(0, |z| z.in_ram);
         let contents = fs::read_to_string("/proc/meminfo")?;
-        self.update_from_meminfo(&contents, zram_resident)
+        self.update_from_meminfo(&contents, zram_in_ram)
     }
 
     /// Parses the contents of `/proc/meminfo` and derives the rest of the stats.
     /// Split out from `update` so the derived math is testable without the filesystem.
-    fn update_from_meminfo(&mut self, contents: &str, zram_resident: u64) -> Result<(), AnyError> {
+    fn update_from_meminfo(&mut self, contents: &str, zram_in_ram: u64) -> Result<(), AnyError> {
         for line in contents.lines() {
             // Split the line into key and value
             let mut split = line.split_whitespace();
@@ -99,7 +103,7 @@ impl MemoryStats {
         self.swap_on_disk = self
             .swap_used
             .saturating_sub(self.zswap)
-            .saturating_sub(zram_resident);
+            .saturating_sub(zram_in_ram);
 
         Ok(())
     }
@@ -227,7 +231,7 @@ impl MemoryStats {
         );
 
         if let Some(zram) = self.zram {
-            print_z("Zram:", zram.resident, zram.compressed, zram.ratio, None);
+            print_z("Zram:", zram.stored, zram.compressed, zram.ratio, None);
         }
 
         println!();
@@ -273,31 +277,29 @@ fn read_zram_stats() -> Option<ZramStats> {
 
     let mut stats = ZramStats::default();
     for (name, used) in devices {
-        let mm_stat =
-            fs::read_to_string(format!("/sys/block/{}/mm_stat", name)).unwrap_or_default();
-        let Some((orig, mem_used_total)) = parse_mm_stat(&mm_stat) else {
-            // Slot count tracks orig_data_size closely; costs us only the ratio.
-            stats.resident += used;
-            continue;
-        };
-
-        // orig_data_size keeps counting pages evicted to a backing_dev (the kernel
-        // re-increments pages_stored after writeback), so bd_stat is the only place
-        // eviction shows. Absent without CONFIG_ZRAM_WRITEBACK, and in 4K units.
+        // Pages evicted to a backing_dev really are on a disk. orig_data_size still
+        // counts them (the kernel re-increments pages_stored after writeback), so
+        // bd_stat is the only place eviction shows. Absent without
+        // CONFIG_ZRAM_WRITEBACK, and in 4K units rather than mm_stat's bytes.
         let written_back = fs::read_to_string(format!("/sys/block/{}/bd_stat", name))
             .ok()
             .and_then(|bd| bd.split_whitespace().next()?.parse::<u64>().ok())
             .unwrap_or(0)
             * 4;
+        stats.in_ram += used.saturating_sub(written_back);
 
-        stats.resident += (orig / 1024).saturating_sub(written_back);
-        stats.compressed += mem_used_total / 1024;
+        let mm_stat =
+            fs::read_to_string(format!("/sys/block/{}/mm_stat", name)).unwrap_or_default();
+        if let Some((orig, mem_used_total)) = parse_mm_stat(&mm_stat) {
+            stats.stored += (orig / 1024).saturating_sub(written_back);
+            stats.compressed += mem_used_total / 1024;
+        }
     }
 
     stats.ratio = if stats.compressed == 0 {
         0.0
     } else {
-        stats.resident as f64 / stats.compressed as f64
+        stats.stored as f64 / stats.compressed as f64
     };
     Some(stats)
 }
