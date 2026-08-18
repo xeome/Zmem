@@ -4,18 +4,18 @@ use crate::AnyError;
 
 pub fn format_size(size: u64) -> String {
     let mut size = size as f64;
-    let mut unit = "kB";
+    let mut unit = "KiB";
     if size > 1024.0 {
         size /= 1024.0;
-        unit = "MB";
+        unit = "MiB";
     }
     if size > 1024.0 {
         size /= 1024.0;
-        unit = "GB";
+        unit = "GiB";
     }
     if size > 1024.0 {
         size /= 1024.0;
-        unit = "TB";
+        unit = "TiB";
     }
 
     format!("{:.2} {}", size, unit)
