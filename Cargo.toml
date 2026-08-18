@@ -24,6 +24,9 @@ lto = "thin"
 [workspace.metadata.dist]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.32.0"
+# ponytail: dist no longer checks release.yml, so dependabot owns its action
+# pins. Run `dist init` by hand when bumping cargo-dist-version.
+allow-dirty = ["ci"]
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
@@ -31,7 +34,7 @@ installers = ["shell"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-unknown-linux-gnu"]
 # Which actions to run on pull requests
-pr-run-mode = "upload"
+pr-run-mode = "skip"
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Whether to install an updater program
