@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
       systems = [
         "x86_64-linux"
@@ -25,6 +25,7 @@
             version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
+            ZMEM_GIT_HASH = self.shortRev or self.dirtyShortRev or "";
             meta = {
               description = "Linux memory monitor with detailed virtual memory information";
               homepage = "https://github.com/xeome/zmem";
