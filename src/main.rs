@@ -36,7 +36,7 @@ fn main() {
     if args.per_process {
         let mut processes = Processes::new();
         if let Err(e) = processes.update(args.sort_by) {
-            let _ = writeln!(io::stdout(), "error updating processes: {}", e);
+            let _ = writeln!(io::stderr(), "error updating processes: {}", e);
         }
 
         processes.display();
