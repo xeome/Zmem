@@ -1,6 +1,7 @@
 use clap::ValueEnum;
 use colored::Colorize;
 use std::fs;
+use std::io::{self, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
@@ -56,14 +57,15 @@ impl Process {
     pub fn display(&self) {
         let fmt = |s: String| format!("{:>14}", s);
 
-        println!(
+        let _ = writeln!(
+            io::stdout(),
             "{:>10} {} {} {} {} {}",
             self.pid,
             fmt(format_size(self.memory.swap)).red(),
             fmt(format_size(self.memory.uss)).green(),
             fmt(format_size(self.memory.pss)).blue(),
             fmt(format_size(self.memory.rss)).cyan(),
-            self.command
+            self.command,
         );
     }
 }
@@ -128,14 +130,15 @@ impl Processes {
     }
 
     pub fn display(&self) {
-        println!(
+        let _ = writeln!(
+            io::stdout(),
             "\n{:>10} {:>14} {:>14} {:>14} {:>14} {:>14}",
             "PID".bold(),
             "Swap".bold(),
             "USS".bold(),
             "PSS".bold(),
             "RSS".bold(),
-            "COMMAND".bold()
+            "COMMAND".bold(),
         );
         for process in &self.processes {
             process.display();
