@@ -1,7 +1,7 @@
 use colored::{ColoredString, Colorize};
 use std::fs;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 
 use crate::utils::{format_size, parse_value};
 use crate::AnyError;
@@ -126,7 +126,8 @@ impl MemoryStats {
         }
 
         fn print_header() {
-            println!(
+            let _ = writeln!(
+                io::stdout(),
                 "{:>8} {} {} {} {} {} {}",
                 "",
                 fmt("total".to_string()).bold(),
@@ -151,7 +152,8 @@ impl MemoryStats {
             cached: u64,
             available: u64,
         ) {
-            println!(
+            let _ = writeln!(
+                io::stdout(),
                 "{:<8} {} {} {} {} {} {}",
                 name,
                 fmt(format_size(total)).green(),
@@ -196,10 +198,11 @@ impl MemoryStats {
             self.availablevmem,
         );
 
-        println!();
+        let _ = writeln!(io::stdout());
 
         fn print_zswap_header() {
-            println!(
+            let _ = writeln!(
+                io::stdout(),
                 "{:>8} {} {} {} {}",
                 "",
                 fmt("Stored".to_string()).bold(),
@@ -212,7 +215,8 @@ impl MemoryStats {
         print_zswap_header();
 
         fn print_z(name: &str, stored: u64, compressed: u64, ratio: f64, on_disk: Option<u64>) {
-            println!(
+            let _ = writeln!(
+                io::stdout(),
                 "{:<8} {} {} {} {}",
                 name.magenta().bold(),
                 fmt(format_size(stored)).green(),
@@ -234,7 +238,7 @@ impl MemoryStats {
             print_z("Zram:", zram.stored, zram.compressed, zram.ratio, None);
         }
 
-        println!();
+        let _ = writeln!(io::stdout());
     }
 }
 
