@@ -2,6 +2,7 @@ use clap::Parser;
 
 use memory::MemoryStats;
 use process::{Processes, SortColumn};
+use std::io::{self, Write};
 
 mod memory;
 mod process;
@@ -28,14 +29,14 @@ fn main() {
 
     let mut mem = MemoryStats::new();
     if let Err(e) = mem.update() {
-        println!("error updating memory stats: {}", e);
+        let _ = writeln!(io::stderr(), "error updating memory stats: {}", e);
     }
     mem.display();
 
     if args.per_process {
         let mut processes = Processes::new();
         if let Err(e) = processes.update(args.sort_by) {
-            println!("error updating processes: {}", e);
+            let _ = writeln!(io::stderr(), "error updating processes: {}", e);
         }
 
         processes.display();
